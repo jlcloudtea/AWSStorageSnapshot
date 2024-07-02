@@ -253,7 +253,7 @@
 									"cd /home/ec2-user\n",
 									"yum -y install php\n",
 									"cd /home/ec2-user\n",
-									"wget https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/ILT-TF-200-ACSOPS-1-5717/12-lab-5-storage-linux/s3/snapshotter_v2.py\n",
+									"wget https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/ILT-TF-200-ACSOPS-1-91552/12-lab-5-storage-linux/s3/snapshotter_v2.py\n",
 									"chmod 740 ./snapshotter_v2.py\n",
 									"chown ec2-user snapshotter_v2.py\n",
 									"curl -O https://bootstrap.pypa.io/get-pip.py\n",
