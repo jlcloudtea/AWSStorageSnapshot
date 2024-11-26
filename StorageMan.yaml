@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'System Operations for AWS, Task5: Manage storage lifecycle'
+Parameters:
+  KeyName:
+    Default: vockey
+    Description: Keyname for the keypair to launch EC2 instances
+    Type: String
+  LinuxAmiId:
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+    Description: The name of the Windows AMI to find based on search
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+  PublicSubnet1Param:
+    AllowedValues:
+    - 10.5.0.0/24
+    Default: 10.5.0.0/24
+    Description: Public Subnet 1
+    Type: String
+  VPCCIDR:
+    AllowedValues:
+    - 10.5.0.0/16
+    Default: 10.5.0.0/16
+    Description: CIDR Block for VPC
+    Type: String
+Resources:
+  AttachGateway:
+    DependsOn:
+    - VPC
+    - InternetGateway
+    Properties:
+      InternetGatewayId:
+        Ref: InternetGateway
+      VpcId:
+        Ref: VPC
+    Type: AWS::EC2::VPCGatewayAttachment
+  CommandHostInstance:
+    DependsOn:
+    - PublicSubnet1
+    - SSHAccess
+    - AttachGateway
+    Properties:
+      ImageId:
+        Ref: LinuxAmiId
+      InstanceType: t2.medium
+      KeyName:
+        Ref: KeyName
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: 'true'
+        DeviceIndex: '0'
+        GroupSet:
+        - Ref: SSHAccess
+        SubnetId:
+          Ref: PublicSubnet1
+      Tags:
+      - Key: Name
+        Value: Command Host
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          yum -y update
+          mkdir /home/ec2-user/.aws
+          chown -R ec2-user:ec2-user /home/ec2-user/.aws
+          cat > /home/ec2-user/.aws/config <<EOF
+          [default]
+          region=${AWS::Region}
+          EOF
+          cd /home/ec2-user
+          yum -y install php
+          cd /home/ec2-user
+          wget https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/ILT-TF-200-ACSOPS-1-91552/12-lab-5-storage-linux/s3/snapshotter_v2.py
+          chmod 740 ./snapshotter_v2.py
+          chown ec2-user snapshotter_v2.py
+          curl -O https://bootstrap.pypa.io/get-pip.py
+          amazon-linux-extras install python3.8
+          python3.8 get-pip.py --user
+          export PATH=$PATH:~/.local/bin
+          pip install boto3
+          pip install awscli --upgrade
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource CommandHostInstance --region ${AWS::Region}
+    Type: AWS::EC2::Instance
+  InternetGateway:
+    DependsOn: VPC
+    Type: AWS::EC2::InternetGateway
+  ProcessorHostInstance:
+    DependsOn:
+    - PublicSubnet1
+    - SSHAccess
+    - AttachGateway
+    Properties:
+      ImageId:
+        Ref: LinuxAmiId
+      InstanceType: t2.micro
+      KeyName:
+        Ref: KeyName
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: 'true'
+        DeviceIndex: '0'
+        GroupSet:
+        - Ref: SSHAccess
+        SubnetId:
+          Ref: PublicSubnet1
+      Tags:
+      - Key: Name
+        Value: Processor
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+          - ''
+          - - "#!/bin/bash -ex \n"
+            - "yum -y update \n"
+            - "mkdir /home/ec2-user/.aws \n"
+            - 'cat > /home/ec2-user/.aws/config <<EOF
+
+              '
+            - '[default]
+
+              '
+            - 'region = '
+            - Ref: AWS::Region
+            - '
+
+              '
+            - 'EOF
+
+              '
+            - 'chown -R ec2-user:ec2-user /home/ec2-user/.aws
+
+              '
+            - 'curl -O https://bootstrap.pypa.io/get-pip.py
+
+              '
+            - amazon-linux-extras install python3.8
+            - 'python3.8 get-pip.py --user
+
+              '
+            - 'export PATH=$PATH:~/.local/bin
+
+              '
+            - 'pip install boto3
+
+              '
+            - 'pip install awscli --upgrade
+
+              '
+            - /opt/aws/bin/cfn-signal -s true '
+            - '''
+              '
+    Type: AWS::EC2::Instance
+  PublicRoute:
+    DependsOn:
+    - PublicRouteTable
+    - AttachGateway
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+      RouteTableId:
+        Ref: PublicRouteTable
+    Type: AWS::EC2::Route
+  PublicRouteTable:
+    DependsOn:
+    - VPC
+    - AttachGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: Public
+      VpcId:
+        Ref: VPC
+    Type: AWS::EC2::RouteTable
+  PublicSubnet1:
+    DependsOn: AttachGateway
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - '0'
+        - Fn::GetAZs: ''
+      CidrBlock:
+        Ref: PublicSubnet1Param
+      MapPublicIpOnLaunch: 'true'
+      Tags:
+      - Key: Name
+        Value: Public Subnet 1
+      VpcId:
+        Ref: VPC
+    Type: AWS::EC2::Subnet
+  PublicSubnet1RouteTableAssociation:
+    DependsOn:
+    - PublicRouteTable
+    - PublicSubnet1
+    - AttachGateway
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+  SSHAccess:
+    DependsOn: AttachGateway
+    Properties:
+      GroupDescription: Access via SSH
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: '0'
+        IpProtocol: tcp
+        ToPort: '65535'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '0'
+        IpProtocol: udp
+        ToPort: '65535'
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+      Tags:
+      - Key: Name
+        Value: SSH Access
+      VpcId:
+        Ref: VPC
+    Type: AWS::EC2::SecurityGroup
+  VPC:
+    Properties:
+      CidrBlock:
+        Ref: VPCCIDR
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags:
+      - Key: VPC
+        Value: NAT-and-CLI
+      - Key: Name
+        Value: Lab VPC
+    Type: AWS::EC2::VPC
+Outputs:
+  someoutput:
+    Description: Outputs to be used
+    Value:
+      Fn::Join:
+      - ''
+      - - '{'
+        - '"Connection": "ssh ec2-user@'
+        - Fn::GetAtt:
+          - CommandHostInstance
+          - PublicIp
+        - '"}'
