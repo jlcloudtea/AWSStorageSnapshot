@@ -10,7 +10,7 @@ do
 	  echo '-------------------------------------------------------------'
 	  echo ' 	Please wait 2-5 mins until new prompt message...           '
 	  echo '-------------------------------------------------------------'
-	  aws cloudformation create-stack --stack-name StorageMan --template-body "file://StoreageMan.yaml" >/dev/null 2>&1
+	  aws cloudformation create-stack --stack-name StorageMan --template-body "file://StorageMan.yaml" >/dev/null 2>&1
 	  aws cloudformation wait stack-create-complete --stack-name StorageMan
  	  echo '-------------------------------------------------------------'
 	  echo '	Setup Completed You can start the assessment tasks          '
